@@ -1,0 +1,16 @@
+[package]
+name = "avi"
+version = "0.1.0"
+authors = ["zakarum"]
+
+
+[lib]
+name = "avirs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "avi"
+path = "src/bin.rs"
+
+[dependencies]
+byteorder = "*"
