@@ -1,4 +1,5 @@
 use std::io::{self, Read, Seek};
+use std::fmt;
 use std::mem::size_of;
 
 use riff;
@@ -19,7 +20,7 @@ impl StreamIndex {
         self.entries.get(id)
     }
 
-    pub fn from_riff<'a, T: 'a + io::Read + io::Seek>(chunk: &mut riff::Chunk<'a, T>) -> AVIResult<Self> {
+    pub fn from_riff<'a, T: 'a + io::Read + io::Seek + fmt::Debug>(chunk: &mut riff::Chunk<'a, T>) -> AVIResult<Self> {
         let mut read = chunk.read();
         let header: StreamIndexHeader = Deser::deser(&mut read)?;
         if header.longs_per_entry as usize * 4 != size_of::<StreamIndexEntry>() {
@@ -45,7 +46,7 @@ impl SuperIndex {
         self.entries.get(id)
     }
 
-    pub fn from_riff<'a, T: 'a + io::Read + io::Seek>(chunk: &mut riff::Chunk<'a, T>) -> AVIResult<Self> {
+    pub fn from_riff<'a, T: 'a + io::Read + io::Seek + fmt::Debug>(chunk: &mut riff::Chunk<'a, T>) -> AVIResult<Self> {
         let mut read = chunk.read();
         let header: SuperIndexHeader = Deser::deser(&mut read)?;
         if header.longs_per_entry as usize * 4 != size_of::<SuperIndexEntry>() {
@@ -62,4 +63,3 @@ impl SuperIndex {
         }
     }
 }
-

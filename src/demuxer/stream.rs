@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, fmt};
 
 use riff;
 use deser::Deser;
@@ -16,7 +16,7 @@ pub struct RawStream {
 }
 
 impl RawStream {
-	pub fn from_riff<'a, T: 'a + io::Read + io::Seek>(list: &mut riff::List<'a, T>) -> AVIResult<Self> {
+	pub fn from_riff<'a, T: 'a + io::Read + io::Seek + fmt::Debug>(list: &mut riff::List<'a, T>) -> AVIResult<Self> {
 		if list.fourcc() != FCC_STRL { return Err(format_error!()); }
 		let list = list.iter();
 		let mut header: Option<StreamHeader> = None;

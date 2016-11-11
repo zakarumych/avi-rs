@@ -2,13 +2,13 @@ use std::borrow::BorrowMut;
 use std::io::{self, Read};
 
 pub trait Deser: Sized {
-	fn deser<R: Read>(read: &mut R) -> io::Result<Self>;
+	fn deser<R: Read+::std::fmt::Debug>(read: &mut R) -> io::Result<Self>;
 }
 
 pub unsafe trait PlainOldData: Copy + Sized {}
 
 impl<T> Deser for T where T: PlainOldData {
-    fn deser<R: Read>(read: &mut R) -> io::Result<T> {
+    fn deser<R: Read+::std::fmt::Debug>(read: &mut R) -> io::Result<T> {
     	let mut read = read.borrow_mut();
         unsafe {
             let mut value = ::std::mem::uninitialized();
@@ -18,7 +18,7 @@ impl<T> Deser for T where T: PlainOldData {
                 Ok(()) => Ok(value),
                 Err(err) => {
                     ::std::mem::forget(value);
-                    println!("Failed to parse {} cause of {}", ::typename::<T>(), err);
+                    println!("Failed to parse {} from {:?} cause of {}", ::typename::<T>(), read, err);
                     Err(err)
                 }
             }
@@ -27,7 +27,7 @@ impl<T> Deser for T where T: PlainOldData {
 }
 
 impl<T> Deser for Vec<T> where T: Deser {
-	fn deser<R: Read>(read: &mut R) -> io::Result<Vec<T>> {
+	fn deser<R: Read+::std::fmt::Debug>(read: &mut R) -> io::Result<Vec<T>> {
 		let mut result = vec![];
 		loop {
 			match T::deser(read) {
@@ -36,7 +36,7 @@ impl<T> Deser for Vec<T> where T: Deser {
 					if err.kind() == io::ErrorKind::UnexpectedEof {
 						break;
 					}
-                    println!("Failed to parse Vec<{}> cause of {}", ::typename::<T>(), err);
+                    println!("Failed to parse Vec<{}> from {:?} cause of {}", ::typename::<T>(), read, err);
 					return Err(err);
 				}
 			}
@@ -46,13 +46,13 @@ impl<T> Deser for Vec<T> where T: Deser {
 }
 
 impl Deser for String {
-	fn deser<R: Read>(read: &mut R) -> io::Result<String> {
+	fn deser<R: Read+::std::fmt::Debug>(read: &mut R) -> io::Result<String> {
     	let mut read = read.borrow_mut();
 		let mut result = String::new();
 		match read.read_to_string(&mut result) {
 			Ok(_) => Ok(result),
 			Err(err) => {
-				println!("Failed to parse String cause of {}", err);
+				println!("Failed to parse String from {:?} cause of {}", read, err);
 				Err(err)
 			}
 		}

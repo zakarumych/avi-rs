@@ -33,15 +33,15 @@ impl Debug for MemSize {
 
 const SPACES: &'static str = "                                                                ";
 
-fn print_hier<T: io::Read + io::Seek>(mut list: List<T>, depth: usize) -> io::Result<()> {
-    println!("{}LIST[{:?}]:{}", &SPACES[..depth * 2], list.fourcc(), MemSize(list.size()));
+fn print_hier<T: io::Read + io::Seek + Debug>(mut list: List<T>, depth: usize) -> io::Result<()> {
+    println!("{}LIST[{}]:{:#010x}", &SPACES[..depth * 2], list.fourcc(), list.size());
     for sub in list.iter() {
         match sub? {
             Node::Chunk(chunk) => {
-                println!("{}CHUNK[{:?}]:{}",
+                println!("{}CHUNK[{}]:{:#010x}",
                          &SPACES[..depth * 2 + 2],
                          chunk.fourcc(),
-                         MemSize(chunk.size()));
+                         chunk.size());
             }
             Node::List(list) => {
                 print_hier(list, depth + 1)?;
@@ -80,7 +80,7 @@ fn test2(path: &str) -> io::Result<()> {
 fn main() {
     for arg in std::env::args() {
         println!("{}", arg);
-    } 
+    }
     let arg = std::env::args().nth(1).unwrap();
     println!("{}", arg);
     println!("RIFF = {:?}", RIFF);

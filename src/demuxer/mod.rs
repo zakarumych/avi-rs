@@ -8,6 +8,7 @@ mod stream;
 mod index;
 
 use std::io::{self, Read, Seek};
+use std::fmt;
 use std::borrow::BorrowMut;
 
 use data::*;
@@ -38,7 +39,7 @@ pub enum Format {
 }
 
 #[derive(Clone, Debug)]
-pub struct Demuxer<'a, T: 'a + Read + Seek> {
+pub struct Demuxer<'a, T: 'a + Read + Seek + fmt::Debug> {
 	header: MainHeader,
 	streams: Vec<RawStream>,
 	info: Option<riff::List<'a, T>>,
@@ -47,7 +48,7 @@ pub struct Demuxer<'a, T: 'a + Read + Seek> {
 }
 
 
-impl<'a, T: 'a + Read + Seek> Demuxer<'a, T> {
+impl<'a, T: 'a + Read + Seek + fmt::Debug> Demuxer<'a, T> {
 	pub fn from_riff(data: &'a mut riff::Riff<T>) -> AVIResult<Self> {
 		let mut data: riff::List<'a, T> = data.iter().next().ok_or(format_error!())??;
 		if data.fourcc() != FCC_AVI { return Err(format_error!()); }
@@ -121,6 +122,3 @@ impl<'a, T: 'a + Read + Seek> Demuxer<'a, T> {
 		}
 	}
 }
-
-
-

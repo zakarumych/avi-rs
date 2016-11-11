@@ -1,6 +1,7 @@
 #![feature(question_mark)]
 #![feature(specialization)]
 #![feature(core_intrinsics)]
+#![feature(zero_one)]
 
 fn typename<T>() -> &'static str {
 	unsafe { ::std::intrinsics::type_name::<T>() }

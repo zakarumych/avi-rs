@@ -13,10 +13,15 @@ use deser::Deser;
 pub const LIST: FourCC = FourCC([b'L', b'I', b'S', b'T']);
 pub const RIFF: FourCC = FourCC([b'R', b'I', b'F', b'F']);
 
+fn round2up<T: ::std::convert::Into<i64>>(value: T) -> i64 {
+    let value = value.into();
+    value + 1 - (value + 1) % 2
+}
+
 
 #[derive(Clone)]
 struct IOBuffer<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     start: u64,
     pos: u64,
@@ -25,7 +30,7 @@ struct IOBuffer<'a, T>
 }
 
 impl<'a, T> IOBuffer<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     fn new(iobuff: &'a RefCell<T>, start: u64, size: u64) -> Self {
         IOBuffer {
@@ -38,11 +43,11 @@ impl<'a, T> IOBuffer<'a, T>
     fn amount_left(&self) -> u64 {
         self.size - cmp::min(self.pos, self.size)
     }
-    fn take_slice(&self, size: u64) -> Option<Self> {
+    fn take_slice(&self, size: u64) -> io::Result<Self> {
         if size > self.amount_left() {
-            None
+            Err(io::Error::new(io::ErrorKind::UnexpectedEof, format!("Unexpected end of {:?} when taking slice {}", self, size)))
         } else {
-            Some(IOBuffer {
+            Ok(IOBuffer {
                 start: self.start + self.pos,
                 pos: 0,
                 size: size,
@@ -53,7 +58,7 @@ impl<'a, T> IOBuffer<'a, T>
 }
 
 impl<'a, T> Read for IOBuffer<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let toread = cmp::min(buf.len() as u64, self.amount_left()) as usize;
@@ -70,7 +75,7 @@ impl<'a, T> Read for IOBuffer<'a, T>
 }
 
 impl<'a, T> Seek for IOBuffer<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let pos = match pos {
@@ -102,15 +107,15 @@ impl<'a, T> Seek for IOBuffer<'a, T>
 }
 
 
-impl<'a, T: 'a + Read + Seek> Debug for IOBuffer<'a, T> {
+impl<'a, T: 'a + Read + Seek + Debug> Debug for IOBuffer<'a, T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "IOBuffer {{ start: {:?}, pos: {:?}, size: {:?} }}", self.start, self.pos, self.size)
     }
 }
 
 
-impl<'a, T: 'a + Read + Seek> Drop for IOBuffer<'a, T>
-    where T: 'a + Read + Seek
+impl<'a, T: 'a + Read + Seek + Debug> Drop for IOBuffer<'a, T>
+    where T: 'a + Read + Seek + Debug
 {
     fn drop(&mut self) {
         self.inner.borrow_mut().seek(SeekFrom::Start(self.start + self.pos));
@@ -121,14 +126,14 @@ impl<'a, T: 'a + Read + Seek> Drop for IOBuffer<'a, T>
 
 #[derive(Debug, Clone)]
 pub enum Node<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     List(List<'a, T>),
     Chunk(Chunk<'a, T>),
 }
 
 impl<'a, T> Node<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     pub fn fourcc(&self) -> FourCC {
         match *self {
@@ -160,14 +165,14 @@ impl<'a, T> Node<'a, T>
 
 #[derive(Debug, Clone)]
 pub struct Riff<T>
-    where T: Read + Seek
+    where T: Read + Seek + Debug
 {
     size: u64,
     stream: RefCell<T>,
 }
 
 impl<T> Riff<T>
-    where T: Read + Seek
+    where T: Read + Seek + Debug
 {
     pub fn new(mut stream: T) -> io::Result<Self> {
         let size = stream.seek(io::SeekFrom::End(0))?;
@@ -187,16 +192,16 @@ impl<T> Riff<T>
 }
 
 pub struct RiffIter<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     iobuff: IOBuffer<'a, T>,
 }
 
 impl<'a, T> RiffIter<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     fn read_next(&mut self) -> Option<io::Result<List<'a, T>>> {
-        if self.iobuff.amount_left() == 0 {
+        if self.iobuff.amount_left() < mem::size_of::<(FourCC, u32, FourCC)>() as u64 {
             return None;
         }
         let fcc = FourCC::deser(&mut self.iobuff);
@@ -204,7 +209,7 @@ impl<'a, T> RiffIter<'a, T>
             Ok(fcc) => {
                 match fcc {
                     RIFF => Some(self.read_next_riff()),
-                    _ => self.iobuff.seek(io::SeekFrom::Current(-4)).err().map(|err| Err(err)),
+                    _ => self.iobuff.seek(io::SeekFrom::Current(-4)).err().map(Err),
                 }
             }
             Err(ref err) if err.kind() == io::ErrorKind::UnexpectedEof => None,
@@ -216,7 +221,7 @@ impl<'a, T> RiffIter<'a, T>
         let size = self.iobuff.read_u32::<LittleEndian>()? - 4;
         let fcc = FourCC::deser(&mut self.iobuff)?;
         let slice = self.take_stream_slice(size as u64)?;
-        self.iobuff.seek(io::SeekFrom::Current(size as i64))?;
+        self.iobuff.seek(io::SeekFrom::Current(round2up(size) as i64))?;
         Ok(List {
             fcc: fcc,
             iobuff: slice,
@@ -224,14 +229,12 @@ impl<'a, T> RiffIter<'a, T>
     }
 
     fn take_stream_slice(&self, size: u64) -> io::Result<IOBuffer<'a, T>> {
-        self.iobuff
-            .take_slice(size)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "Unexpected end of file"))
+        self.iobuff.take_slice(size)
     }
 }
 
 impl<'a, T> Iterator for RiffIter<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     type Item = io::Result<List<'a, T>>;
 
@@ -245,7 +248,7 @@ impl<'a, T> Iterator for RiffIter<'a, T>
 
 #[derive(Debug, Clone)]
 pub struct List<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     fcc: FourCC,
     iobuff: IOBuffer<'a, T>,
@@ -253,7 +256,7 @@ pub struct List<'a, T>
 
 
 impl<'a, T> List<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     pub fn iter<'b>(&'b mut self) -> ListIter<'a, 'b, T>
         where 'a: 'b
@@ -268,57 +271,64 @@ impl<'a, T> List<'a, T>
         self.iobuff.size
     }
     fn read_next(&mut self) -> Option<io::Result<Node<'a, T>>> {
-        if self.iobuff.amount_left() == 0 {
+        if self.iobuff.amount_left() < mem::size_of::<FourCC>() as u64 {
             return None;
         }
-        Some(self.read_next_expected())
-        
-    }
-    fn read_next_expected(&mut self) -> io::Result<Node<'a, T>> {
-        let result = match FourCC::deser(&mut self.iobuff)? {
-            LIST => {
-                let size = self.iobuff.read_u32::<LittleEndian>()? - 4;
-                let fcc = FourCC::deser(&mut self.iobuff)?;
-                let slice = self.take_stream_slice(size as u64)?;
-                self.iobuff.seek(io::SeekFrom::Current(size as i64))?;
-                Node::List(List {
-                    fcc: fcc,
-                    iobuff: slice,
-                })
-            }
-            fcc => {
-                let mut size = self.iobuff.read_u32::<LittleEndian>()?;
-                while size as u64 > self.iobuff.amount_left() {
-                    println!("Chunk is too big. Chunk: {}. Remaining size: {}", size, self.iobuff.amount_left());
-                    self.iobuff.seek(io::SeekFrom::Current(-3))?;
-                    size = self.iobuff.read_u32::<LittleEndian>()?;
+
+        match FourCC::deser(&mut self.iobuff) {
+            Ok(LIST) => {
+                if self.iobuff.amount_left() < mem::size_of::<(FourCC, u32)>() as u64 {
+                    return None;
                 }
-                let slice = self.take_stream_slice(size as u64)?;
-                self.iobuff.seek(io::SeekFrom::Current(size as i64))?;
-                Node::Chunk(Chunk {
-                    fcc: fcc,
-                    iobuff: slice,
-                })
+                Some(self.read_list().map(Node::List))
             }
-        };
-        Ok(result)
+            Ok(fcc) => {
+                if self.iobuff.amount_left() < mem::size_of::<u32>() as u64 {
+                    return None;
+                }
+                Some(self.read_chunk(fcc).map(Node::Chunk))
+            }
+            Err(err) => Some(Err(err))
+        }
+    }
+    fn read_list(&mut self) -> io::Result<List<'a, T>> {
+        let size = self.iobuff.read_u32::<LittleEndian>()? - 4;
+        let fcc = FourCC::deser(&mut self.iobuff)?;
+        let slice = self.take_stream_slice(size as u64)?;
+        self.iobuff.seek(io::SeekFrom::Current(round2up(size) as i64))?;
+        Ok(List {
+            fcc: fcc,
+            iobuff: slice,
+        })
+    }
+
+    fn read_chunk(&mut self, fcc: FourCC) -> io::Result<Chunk<'a, T>> {
+        let mut size = self.iobuff.read_u32::<LittleEndian>()?;
+        if size as u64 > self.iobuff.amount_left() {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, format!("Chunk is too big. Chunk: {}. Remaining size: {}", size, self.iobuff.amount_left())));
+        }
+        let slice = self.take_stream_slice(size as u64)?;
+        self.iobuff.seek(io::SeekFrom::Current(round2up(size) as i64))?;
+        Ok(Chunk {
+            fcc: fcc,
+            iobuff: slice,
+        })
     }
     fn take_stream_slice(&self, size: u64) -> io::Result<IOBuffer<'a, T>> {
-        self.iobuff
-            .take_slice(size)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, format!("Unexpected end of file while taking slice[0..{}] from {:?}", size, self.iobuff)))
+        self.iobuff.take_slice(size)
     }
 }
 
+#[derive(Debug)]
 pub struct ListIter<'a, 'b, T>
-    where T: 'a + Read + Seek,
+    where T: 'a + Read + Seek + Debug,
           'a: 'b
 {
     inner: &'b mut List<'a, T>,
 }
 
 impl<'a, 'b, T> Iterator for ListIter<'a, 'b, T>
-    where T: 'a + Read + Seek,
+    where T: 'a + Read + Seek + Debug,
           'a: 'b
 {
     type Item = io::Result<Node<'a, T>>;
@@ -333,14 +343,14 @@ impl<'a, 'b, T> Iterator for ListIter<'a, 'b, T>
 
 #[derive(Debug, Clone)]
 pub struct Chunk<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     fcc: FourCC,
     iobuff: IOBuffer<'a, T>,
 }
 
 impl<'a, T> Chunk<'a, T>
-    where T: 'a + Read + Seek
+    where T: 'a + Read + Seek + Debug
 {
     pub fn fourcc(&self) -> FourCC {
         self.fcc
@@ -354,15 +364,16 @@ impl<'a, T> Chunk<'a, T>
     }
 }
 
+#[derive(Debug)]
 pub struct ChunkReader<'a, 'b, T>
-    where T: 'a + Read + Seek,
+    where T: 'a + Read + Seek + Debug,
           'a: 'b
 {
     inner: &'b mut Chunk<'a, T>,
 }
 
 impl<'a, 'b, T> Read for ChunkReader<'a, 'b, T>
-    where T: 'a + Read + Seek,
+    where T: 'a + Read + Seek + Debug,
           'a: 'b
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {

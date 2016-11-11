@@ -77,7 +77,7 @@ pub struct WaveFormat {
 
 
 impl Deser for WaveFormat {
-    fn deser<R: Read>(read: &mut R) -> io::Result<WaveFormat> {
+    fn deser<R: Read+::std::fmt::Debug>(read: &mut R) -> io::Result<WaveFormat> {
         let read = read.borrow_mut();
         let header = WAVEFORMATEX::deser(read)?;
         let mut extra = vec![0; header.size as usize];
@@ -105,11 +105,11 @@ unsafe impl PlainOldData for MainHeader {}
 
 #[derive(Copy, Clone, Debug)]
 pub enum Flag {
-    AVIF_HASINDEX,         // The file has an index 9 
-    AVIF_MUSTUSEINDEX,     // The order in which the video and audio chunks must b e replayed is determined by the index and may differ from the order in which those chunks o ccur in the file. 
-    AVIF_ISINTERLEAVED,    // The streams are prop erly interleaved into each other 
-    AVIF_WASCAPTUREFILE,   // The file was captured. The interleave might b e weird. 
-    AVIF_COPYRIGHTED,      // Ignore it 
+    AVIF_HASINDEX,         // The file has an index 9
+    AVIF_MUSTUSEINDEX,     // The order in which the video and audio chunks must b e replayed is determined by the index and may differ from the order in which those chunks o ccur in the file.
+    AVIF_ISINTERLEAVED,    // The streams are prop erly interleaved into each other
+    AVIF_WASCAPTUREFILE,   // The file was captured. The interleave might b e weird.
+    AVIF_COPYRIGHTED,      // Ignore it
     AVIF_TRUSTCKTYPE,      // (Op en-DML only!) This flag indicates that the keyframe flags in the index are reliable. If this flag is not set in an Op en-DML file, the keyframe flags could b e defective without technically rendering the file invali
 }
 
@@ -164,9 +164,9 @@ unsafe impl PlainOldData for IndexEntry {}
 #[derive(Copy, Clone, Debug)]
 pub enum IndexFlags {
     AVIIF_KEYFRAME,     //The chunk the entry refers to is a keyframe.
-    AVIIF_LIST,         //The entry p oints to a list, not to a chunk. 
+    AVIIF_LIST,         //The entry p oints to a list, not to a chunk.
     AVIIF_FIRSTPART,    //Indicates this chunk needs the frames following it to b e used; it cannot stand alone.
-    AVIIF_LASTPART,     //Indicates this chunk needs the frames preceding it to b e used; it cannot stand alone. 
+    AVIIF_LASTPART,     //Indicates this chunk needs the frames preceding it to b e used; it cannot stand alone.
     AVIIF_NOTIME,       //The duration which is applied to the corresp onding chunk is 0
 }
 
